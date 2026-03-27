@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>V-Slice → Psych Converter</title>
+</head>
+<body>
+
+<h2>Convertir V-Slice a Psych Engine</h2>
+<input type="file" id="fileInput">
+<button onclick="convert()">Convertir</button>
+
+<script>
+function convert() {
+  const file = document.getElementById('fileInput').files[0];
+  if (!file) return alert("Subí un JSON");
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const data = JSON.parse(e.target.result);
+
+    let notes = [];
+
+    // 🔥 Detecta formato V-Slice automáticamente
+    let chart = data.data || data; // algunos tienen data adentro
+
+    if (!chart.notes && chart.strumLines) {
+      // fallback por si es parecido a codename
+      chart.strumLines.forEach(line => {
+        line.notes.forEach(n => {
+          notes.push([n.time, n.id, n.sLen || 0, line.type === 1]);
+        });
+      });
+    } else if (chart.notes) {
+      // formato más cercano a V-Slice real
+      chart.notes.forEach(n => {
+        notes.push([
+          n.time || n.strumTime,
+          n.direction || n.noteData || 0,
+          n.length || n.sustainLength || 0,
+          n.mustHit || false
+        ]);
+      });
+    }
+
+    // 🔥 crear psych
+    let psych = {
+      song: {
+        song: "converted",
+        bpm: chart.bpm || 120,
+        speed: chart.scrollSpeed || 1,
+        notes: [{
+          sectionNotes: notes,
+          mustHitSection: false,
+          lengthInSteps: 16,
+          typeOfSection: 0,
+          changeBPM: false,
+          altAnim: false
+        }]
+      }
+    };
+
+    const blob = new Blob([JSON.stringify(psych, null, 2)], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "psych_chart.json";
+    a.click();
+  };
+
+  reader.readAsText(file);
+}
+</script>
+
+</body>
+</html>
