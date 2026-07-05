@@ -1,77 +1,225 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-  <title>V-Slice → Psych Converter</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FNF XML Creator - Frame por Frame</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        body { font-family: 'Press Start 2P', system-ui; }
+        .pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+        .frame-name { font-size: 10px; }
+    </style>
 </head>
-<body>
+<body class="bg-zinc-950 text-white">
+    <div class="max-w-6xl mx-auto p-6">
+        <h1 class="text-4xl font-bold text-center text-pink-500 mb-8 tracking-widest">FNF XML CREATOR</h1>
 
-<h2>Convertir V-Slice a Psych Engine</h2>
-<input type="file" id="fileInput">
-<button onclick="convert()">Convertir</button>
+        <div class="grid grid-cols-12 gap-6">
+            <!-- Panel izquierdo: Controles y frames -->
+            <div class="col-span-5 bg-zinc-900 p-6 rounded-xl border border-zinc-700">
+                <div class="mb-6">
+                    <label class="block text-pink-400 text-sm mb-2">SPRITESHEET</label>
+                    <input type="file" id="upload" accept="image/*" 
+                           class="w-full bg-zinc-800 border border-zinc-700 p-4 text-sm">
+                </div>
 
-<script>
-function convert() {
-  const file = document.getElementById('fileInput').files[0];
-  if (!file) return alert("Subí un JSON");
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">ANCHO FRAME</label>
+                        <input id="fw" type="number" value="150" 
+                               class="w-full bg-zinc-800 border border-zinc-700 p-3 focus:border-pink-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-zinc-400 mb-1">ALTO FRAME</label>
+                        <input id="fh" type="number" value="150" 
+                               class="w-full bg-zinc-800 border border-zinc-700 p-3 focus:border-pink-500 outline-none">
+                    </div>
+                </div>
 
-  const reader = new FileReader();
+                <button onclick="updateGrid()" 
+                        class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 border border-pink-500 text-pink-400 font-bold mb-6">
+                    GENERAR GRID
+                </button>
 
-  reader.onload = function(e) {
-    const data = JSON.parse(e.target.result);
+                <div class="mb-4 text-pink-400 text-sm">FRAMES (edita los nombres)</div>
+                <div id="framesContainer" 
+                     class="grid grid-cols-4 gap-3 max-h-[520px] overflow-auto p-2 bg-black rounded-lg"></div>
+            </div>
 
-    let notes = [];
+            <!-- Panel derecho: Vista previa + XML -->
+            <div class="col-span-7 space-y-6">
+                <!-- Vista previa -->
+                <div class="bg-black border-4 border-zinc-700 rounded-xl p-6 flex justify-center items-center h-[420px]">
+                    <canvas id="canvas" width="520" height="380" class="pixel bg-zinc-950"></canvas>
+                </div>
 
-    // 🔥 Detecta formato V-Slice automáticamente
-    let chart = data.data || data; // algunos tienen data adentro
+                <!-- XML -->
+                <div class="bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden">
+                    <div class="bg-zinc-800 px-6 py-3 border-b border-zinc-700 flex justify-between items-center">
+                        <span class="text-emerald-400 font-bold">XML Sparrow</span>
+                        <div>
+                            <button onclick="copyXML()" 
+                                    class="px-5 py-2 text-xs bg-zinc-700 hover:bg-zinc-600 mr-2">COPIAR</button>
+                            <button onclick="exportXML()" 
+                                    class="px-8 py-2 bg-pink-600 hover:bg-pink-500 font-bold">EXPORTAR .XML</button>
+                        </div>
+                    </div>
+                    <pre id="xmlPreview" class="p-6 font-mono text-xs text-emerald-300 overflow-auto h-96 whitespace-pre-wrap"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    if (!chart.notes && chart.strumLines) {
-      // fallback por si es parecido a codename
-      chart.strumLines.forEach(line => {
-        line.notes.forEach(n => {
-          notes.push([n.time, n.id, n.sLen || 0, line.type === 1]);
+    <script>
+        let spritesheet = null;
+        let frameWidth = 150;
+        let frameHeight = 150;
+        let cols = 0;
+        let rows = 0;
+        let frameData = []; // {index, name, x, y}
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Cargar imagen
+        document.getElementById('upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                spritesheet = new Image();
+                spritesheet.onload = function() {
+                    updateGrid();
+                };
+                spritesheet.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
         });
-      });
-    } else if (chart.notes) {
-      // formato más cercano a V-Slice real
-      chart.notes.forEach(n => {
-        notes.push([
-          n.time || n.strumTime,
-          n.direction || n.noteData || 0,
-          n.length || n.sustainLength || 0,
-          n.mustHit || false
-        ]);
-      });
-    }
 
-    // 🔥 crear psych
-    let psych = {
-      song: {
-        song: "converted",
-        bpm: chart.bpm || 120,
-        speed: chart.scrollSpeed || 1,
-        notes: [{
-          sectionNotes: notes,
-          mustHitSection: false,
-          lengthInSteps: 16,
-          typeOfSection: 0,
-          changeBPM: false,
-          altAnim: false
-        }]
-      }
-    };
+        function updateGrid() {
+            frameWidth = parseInt(document.getElementById('fw').value) || 150;
+            frameHeight = parseInt(document.getElementById('fh').value) || 150;
 
-    const blob = new Blob([JSON.stringify(psych, null, 2)], {type: "application/json"});
-    const url = URL.createObjectURL(blob);
+            if (!spritesheet) {
+                alert("Primero sube un spritesheet");
+                return;
+            }
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "psych_chart.json";
-    a.click();
-  };
+            cols = Math.floor(spritesheet.width / frameWidth);
+            rows = Math.floor(spritesheet.height / frameHeight);
 
-  reader.readAsText(file);
-}
-</script>
+            frameData = [];
+            const totalFrames = cols * rows;
 
+            for (let i = 0; i < totalFrames; i++) {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                frameData.push({
+                    index: i,
+                    name: `frame${i.toString().padStart(4, '0')}`,
+                    x: col * frameWidth,
+                    y: row * frameHeight
+                });
+            }
+
+            renderFrames();
+            updateXML();
+        }
+
+        function renderFrames() {
+            const container = document.getElementById('framesContainer');
+            container.innerHTML = '';
+            container.style.gridTemplateColumns = `repeat(auto-fit, minmax(110px, 1fr))`;
+
+            frameData.forEach((frame, i) => {
+                const div = document.createElement('div');
+                div.className = `bg-zinc-800 border border-zinc-700 p-3 rounded hover:border-pink-500 transition-colors cursor-pointer`;
+                div.innerHTML = `
+                    <div class="text-[10px] text-zinc-500 mb-1">Frame ${frame.index}</div>
+                    <input type="text" value="${frame.name}" 
+                           class="frame-name w-full bg-zinc-900 border border-zinc-600 p-2 text-center text-pink-300 focus:outline-none focus:border-pink-500"
+                           onchange="updateFrameName(${i}, this.value)">
+                `;
+                div.onclick = () => previewFrame(i);
+                container.appendChild(div);
+            });
+        }
+
+        function updateFrameName(index, newName) {
+            frameData[index].name = newName.trim();
+            updateXML();
+        }
+
+        function previewFrame(index) {
+            if (!spritesheet) return;
+            
+            const frame = frameData[index];
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const scale = Math.min(
+                canvas.width * 0.85 / frameWidth,
+                canvas.height * 0.85 / frameHeight
+            );
+
+            ctx.drawImage(
+                spritesheet,
+                frame.x, frame.y, frameWidth, frameHeight,
+                (canvas.width - frameWidth * scale) / 2,
+                (canvas.height - frameHeight * scale) / 2,
+                frameWidth * scale,
+                frameHeight * scale
+            );
+        }
+
+        function generateXML() {
+            let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="spritesheet.png">\n`;
+
+            frameData.forEach(frame => {
+                xml += `  <SubTexture name="${frame.name}" `;
+                xml += `x="${frame.x}" y="${frame.y}" `;
+                xml += `width="${frameWidth}" height="${frameHeight}" `;
+                xml += `frameX="0" frameY="0" frameWidth="${frameWidth}" frameHeight="${frameHeight}"/>\n`;
+            });
+
+            xml += '</TextureAtlas>';
+            return xml;
+        }
+
+        function updateXML() {
+            document.getElementById('xmlPreview').textContent = generateXML();
+        }
+
+        function exportXML() {
+            if (frameData.length === 0) {
+                alert("Primero sube un spritesheet y genera el grid");
+                return;
+            }
+            const xmlContent = generateXML();
+            const blob = new Blob([xmlContent], { type: 'text/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'spritesheet.xml';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function copyXML() {
+            const xml = generateXML();
+            navigator.clipboard.writeText(xml).then(() => {
+                alert("XML copiado al portapapeles");
+            });
+        }
+
+        // Inicializar
+        window.onload = function() {
+            // Ejemplo inicial
+            console.log("%cFNF XML Creator listo - Solo nombres y XML", "color: #ff00ff");
+        };
+    </script>
 </body>
 </html>
